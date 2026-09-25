@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "protocol-toolkit"
+version = "2.2.0"
+description = "HTTP/1.1, HTTP/2, DNS (UDP/TCP/DoT/DoH), SMTP and port scanning on raw sockets, with a byte-level wire inspector"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+http2 = ["hpack>=4"]          # HTTP/2 header compression
+brotli = ["brotli"]           # Content-Encoding: br
+certs = ["certifi"]           # CA bundle for python.org builds on macOS
+ai = ["anthropic"]            # Claude in the Assistant
+web = ["fastapi", "uvicorn", "websockets"]   # the React UI's local server
+http3 = ["aioquic>=1.2"]      # HTTP/3 over QUIC
+window = ["pywebview"]        # native window instead of a browser tab
+all = ["hpack>=4", "brotli", "certifi", "anthropic", "fastapi", "uvicorn", "websockets", "aioquic>=1.2"]
+dev = ["pytest>=7", "pyflakes", "httpx"]
+
+[project.scripts]
+protocol-toolkit = "protocol_toolkit.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["protocol_toolkit*"]
+
+[tool.setuptools.package-data]
+"protocol_toolkit.webapp" = ["static/*", "static/assets/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
+markers = ["network: needs internet access (skip with -m 'not network')"]

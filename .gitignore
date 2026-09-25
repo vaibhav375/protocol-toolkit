@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+build/
+dist/
+
+# Node / Playwright
+node_modules/
+test-results/
+playwright-report/
+
+# Mac app build output
+packaging/macos/build/
+packaging/macos/dist/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
