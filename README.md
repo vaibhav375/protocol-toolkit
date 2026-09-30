@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/vaibhav375/protocol-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/vaibhav375/protocol-toolkit/actions/workflows/ci.yml)
 
+**Live demo: [protocol-toolkit.onrender.com](https://protocol-toolkit.onrender.com)** (free hosting, so the first visit after a quiet
+spell can take a little while to wake up)
+
 A network protocol workbench that speaks **HTTP/1.1, HTTP/2, HTTP/3, DNS and SMTP** with protocol
 code written on raw sockets, and **records every byte it sends and receives**. You see exactly what
 went over the wire, how long each step took, and you can open the same capture in Wireshark or your
@@ -69,7 +72,8 @@ saved with owner-only permissions and can be cleared from the Inspector.
 
 ## Public demo
 
-`python -m protocol_toolkit demo` serves the toolkit as a website anyone can use. Each visitor gets
+Running at **[protocol-toolkit.onrender.com](https://protocol-toolkit.onrender.com)**. `python -m protocol_toolkit demo` serves the
+toolkit as a website anyone can use. Each visitor gets
 a private, in-memory session. A network guard checks every outbound connection's resolved address,
 so the server can't be pointed at private networks or cloud metadata, including through redirects
 or DNS rebinding. HTTP is limited to GET and HEAD, mail only reaches the built-in test inbox, scans

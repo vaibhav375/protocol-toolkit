@@ -14,8 +14,9 @@ Everything runs on your own computer and talks to the real internet: real URLs, 
 resolvers and root servers, real mail servers. The only simulated parts are the optional local
 test servers.
 
-It also runs as a **public demo website**: the same app, where each visitor gets a private session
-and a network guard stops the server being used to reach private networks (see section 8).
+It also runs as a **public demo website** at **https://protocol-toolkit.onrender.com**: the same app, where each visitor gets a
+private session and a network guard stops the server being used to reach private networks (see
+section 8).
 
 ---
 
@@ -296,7 +297,8 @@ allowed methods and scan targets, locks the SMTP server to the test inbox, and h
 things the demo can't do. A top navigation strip replaces the side rail on phones.
 
 **Deployment:** a two-stage `Dockerfile` builds the React UI with Node, then installs the Python
-package; `render.yaml` deploys it as a Render web service, with `/healthz` as the health check.
+package; `render.yaml` deploys it as a Render web service, with `/healthz` as the health check. It
+is live at https://protocol-toolkit.onrender.com, and Render redeploys it on every push to `main`.
 Render's free tier blocks outbound SMTP ports, which the demo never uses.
 
 ---
@@ -480,7 +482,10 @@ optional tool). The 7 Playwright end-to-end tests pass in about 20 seconds again
 **Mac app release:** pushing the `v2.2.0` tag built the app on GitHub's macOS runner and published it
 as a release with a 25.8 MB download.
 
-**Public demo, run locally** with `scripts/smoke_demo.py --live`, all 20 checks passed:
+**Public demo, deployed on Render** at https://protocol-toolkit.onrender.com. `scripts/smoke_demo.py --live` passed all 20 checks
+against the live site, as it did locally first. On Render's network, DNS over UDP answered in 7 ms,
+DNS over TLS in 140 ms and over HTTPS in 170 ms, and HTTPS to example.com took 212 ms over HTTP/2.
+The checks covered:
 - HTTPS to example.com over HTTP/2, and HTTP/3 over QUIC to Cloudflare, through the network guard
 - DNS over UDP, TCP, TLS and HTTPS, a root-to-authoritative trace, and a mail check of gmail.com
 - a scan of scanme.nmap.org that found SSH (with its banner) and HTTP
@@ -499,7 +504,7 @@ appeared in the Wire column.
 
 **Protocol Toolkit**: network protocol workbench with LLM tool calling
 *Python, sockets, TLS, HTTP/2, HTTP/3/QUIC, DNS, FastAPI, React, TypeScript, Playwright, Docker, GitHub Actions*
-github.com/vaibhav375/protocol-toolkit
+github.com/vaibhav375/protocol-toolkit · live demo: protocol-toolkit.onrender.com
 
 - **Protocols:** implemented HTTP/1.1, HTTP/2 (RFC 9113 framing and flow control) and DNS over UDP,
   TCP, TLS and HTTPS, with root-to-authoritative tracing, all on raw sockets. Added HTTP/3 over QUIC
@@ -517,7 +522,8 @@ github.com/vaibhav375/protocol-toolkit
   released through GitHub Actions.
 - **Public deployment:** deployed it as a public demo with per-visitor sessions and an SSRF guard
   that checks every outbound connection's resolved address, blocking private networks, cloud
-  metadata, DNS rebinding and redirect tricks. Containerised with Docker and deployed on Render.
+  metadata, DNS rebinding and redirect tricks. Containerised with Docker and deployed on Render,
+  where all 20 end-to-end checks pass, including HTTP/3 over QUIC and DNS over UDP, TLS and HTTPS.
 - **Testing and CI:** 153 automated tests (146 pytest and 7 Playwright end-to-end) run in GitHub
   Actions across Python 3.10 to 3.13, plus a job that builds the demo container and smoke-tests it.
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import ssl
 import sys
 import time
 import urllib.error
@@ -18,7 +19,14 @@ import urllib.request
 def main() -> int:
     base = sys.argv[1].rstrip("/")
     live = "--live" in sys.argv
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    tls = ssl.create_default_context()
+    try:  # python.org builds on macOS ship without CA certificates; certifi fills the gap
+        import certifi
+        tls.load_verify_locations(certifi.where())
+    except ImportError:
+        pass
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
+                                         urllib.request.HTTPSHandler(context=tls))
 
     def call(method: str, path: str, body=None) -> tuple:
         data = json.dumps(body).encode() if body is not None else None
