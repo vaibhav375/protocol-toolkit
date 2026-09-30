@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
 from typing import Dict, List, Optional, Tuple, Union
 
-from . import http2, http3
+from . import __version__, http2, http3
 from .net import Connection, ConnectionError_
 from .wire import WireLog, annotate_http1
 
@@ -21,7 +21,7 @@ try:
 except ImportError:  # pragma: no cover - optional
     brotli = None
 
-USER_AGENT = "Protocol-Toolkit/2.1"
+USER_AGENT = f"Protocol-Toolkit/{__version__}"
 HAR_BODY_LIMIT = 1024 * 1024  # response bytes kept for HAR export
 VALID_METHODS = {"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"}
 

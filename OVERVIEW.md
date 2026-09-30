@@ -31,6 +31,8 @@ test servers.
 11. [Limitations](#11-limitations)
 12. [Repository, CI and releases](#12-repository-ci-and-releases)
 13. [Size of the project](#13-size-of-the-project)
+14. [Verified results](#14-verified-results)
+15. [Resume summary](#15-resume-summary)
 
 ---
 
@@ -81,7 +83,7 @@ further in turn.
    • live Wire column  ◄────│     checks                           • dnsclient              resolvers,    │
      (Server-Sent Events)   │   • JSON API for each tool         • smtpclient             root servers,   │
    • assistant chat    ◄───►│   • WebSocket for the assistant    • mailcheck              mail servers)   │
-     (WebSocket)            │   • capture store (last 60)        • scanner                                │
+     (WebSocket)            │   • saved captures (newest 200)    • scanner, http3, exports                │
                             │                                     │                                        │
                             │                                     └─ net.Connection ── every byte ──► WireLog
                             │                                                                              │
@@ -289,8 +291,8 @@ python3 -m protocol_toolkit selftest     # quick check of HTTP, DNS and scanning
 packaging/macos/build_app.sh             # build the Mac app yourself
 ```
 
-Or download the Mac app from the repository's Releases page (right-click, then Open, the first time,
-because the build isn't notarised).
+Once a release is published, the Mac app can also be downloaded from the repository's Releases page
+(right-click, then Open, the first time, because the build isn't notarised).
 
 Optional extras: `pip install -e ".[all]"` adds HTTP/2 header compression, HTTP/3 (`aioquic`),
 Brotli, `certifi`, the Anthropic SDK and the web server packages. For the free assistant, install Ollama and run
@@ -307,10 +309,11 @@ checks.
 
 - **Cloudflare's DoH endpoint rejects HTTP/2 POSTs without `content-length`,** even though HTTP/2
   doesn't require it. The client now always sends it, as curl does.
-- **Tk 8.6 on macOS 26 leaves a revisited notebook tab blank.** A bare Tk window reproduces it.
-  Flushing pending redraws on every tab change works around it; Tk 9 doesn't have the bug.
-- **Tk's text widget freezes on very long lines.** One 1.09 MB line took minutes to lay out.
-  Read-only panes now cap and break up long lines for display.
+- **Tk 8.6 on macOS 26 leaves a revisited notebook tab blank** (in the retired Tkinter UI). A bare Tk
+  window reproduces it, so it's a Tk bug; flushing pending redraws on every tab change worked around
+  it, and Tk 9 doesn't have it.
+- **Tk's text widget froze on very long lines** (also in the retired UI). One 1.09 MB line took
+  minutes to lay out; capping and breaking up long lines for display brought it to 0.03 seconds.
 - **A DNS timeout was reported as "No SPF record".** Failed lookups are now retried and reported as
   "couldn't check".
 - **Small models pass lists where the schema said a single string.** The DNS tool now accepts both,
@@ -352,7 +355,9 @@ checks.
   The network-dependent jobs are allowed to fail without blocking, since they rely on third-party
   servers.
 - **Releases (`.github/workflows/release.yml`):** pushing a tag such as `v2.2.0` builds the Mac app
-  on a macOS runner and attaches `Protocol-Toolkit-macOS.zip` to a GitHub release.
+  on a macOS runner and attaches `Protocol-Toolkit-macOS.zip` to a GitHub release. The workflow is in
+  place; no release has been published yet. The app was built and launched locally (84 MB bundle,
+  37 MB zip).
 
 ## 13. Size of the project
 
@@ -364,3 +369,76 @@ checks.
 | Tests | ~1,600 (111 Python + 7 end-to-end) |
 
 Started from a single 2,380-line script.
+
+---
+
+## 14. Verified results
+
+Everything below was measured or observed while building and testing the project.
+
+**Continuous integration.** On the first push to GitHub, all 6 CI jobs passed:
+- tests on Python 3.10, 3.12 and 3.13
+- the live network tests
+- the UI type-check, build and end-to-end suite
+- the Wireshark check
+
+**Wireshark decryption.** On a clean Ubuntu runner, Wireshark's `tshark` opened the exported pcapng
+files and decoded the encrypted application layer, using only the keys embedded in each file:
+
+| Capture | What tshark showed |
+|---|---|
+| HTTP/2 over TLS to google.com | Every request and response header, including `:status` |
+| HTTP/1.1 over TLS to example.com | The `200` response code |
+| HTTP/3 over QUIC to cloudflare.com | The HTTP/3 frames |
+| DNS over UDP | The query and answer for example.com |
+
+**Interoperability with real servers:**
+- **HTTP/2** negotiated with Google, GitHub, example.com and httpbin.
+- **HTTP/3** completed with Cloudflare and Google. The QUIC handshake took 47 ms and 67 ms, and
+  Cloudflare's trace endpoint reported `http=http/3`.
+- **DNS:** DNS-over-HTTPS answered by Cloudflare, Google and Quad9. DNS-over-TLS by Cloudflare. A
+  root-to-authoritative trace for www.github.com (root → .com → AWS name servers → CNAME and address).
+- **Email:** a STARTTLS handshake with Gmail's mail server negotiated TLS 1.3. Mail checks of gmail.com
+  and github.com matched their published DNS records.
+
+**Performance fixes (before → after):**
+- A 1.3 MB page with a 1.09 MB single line went from freezing the UI for minutes to rendering in
+  0.03 seconds.
+- A mail check that hit a DNS timeout used to report "No SPF record". It now retries, and reports
+  "couldn't check" if the lookup still fails.
+
+**Tests:** 111 Python tests pass in about 40 seconds. The 7 Playwright end-to-end tests pass in
+about 15 seconds against the real app.
+
+**Assistant:** a free local model (`qwen2.5:3b` through Ollama) chose and ran the right tools on its
+own. It used `dns_lookup` and `http_request` to answer "what are example.com's addresses and does it
+support HTTP/2", and ran one multi-type `dns_lookup` to explain the local test zone. Every call
+appeared in the Wire column.
+
+---
+
+## 15. Resume summary
+
+**Protocol Toolkit**: network protocol workbench with LLM tool calling
+*Python, sockets, TLS, HTTP/2, HTTP/3/QUIC, DNS, FastAPI, React, TypeScript, Playwright, GitHub Actions*
+github.com/vaibhav375/protocol-toolkit
+
+- **Protocols:** implemented HTTP/1.1, HTTP/2 (RFC 9113 framing and flow control) and DNS over UDP,
+  TCP, TLS and HTTPS, with root-to-authoritative tracing, all on raw sockets. Added HTTP/3 over QUIC
+  through aioquic's sans-I/O API, and ran TLS through `ssl.MemoryBIO` so every byte is captured and
+  labelled.
+- **Wireshark export:** built pcapng export that reconstructs IPv4/IPv6 TCP and UDP packets with
+  valid checksums and embeds TLS 1.3 session keys. A CI job proves with `tshark` that HTTP/2, HTTP/3
+  and DNS captures decrypt in Wireshark.
+- **LLM assistant:** built an assistant that calls 8 toolkit functions (DNS trace, HTTP, TLS, mail
+  checks, scans), with schema-checked arguments, user approval for scans and email, and secrets
+  removed from results. It runs locally on Qwen 2.5 through Ollama, or on Claude.
+- **Web app and security:** built a React 19 and TypeScript UI on a FastAPI backend that live-streams
+  captured bytes. Secured the local server against DNS rebinding and cross-site requests with a
+  loopback-only listener, a per-launch session key and Host/Origin checks. Packaged it as a macOS app.
+- **Testing and CI:** 118 automated tests (111 pytest and 7 Playwright end-to-end) run in GitHub
+  Actions across Python 3.10 to 3.13; all 6 CI jobs passed on the first push.
+
+**One-line version:** built a raw-socket protocol workbench (HTTP/1.1, HTTP/2, HTTP/3, DNS, SMTP)
+with byte-level capture, Wireshark-decryptable exports verified in CI, and an LLM agent that uses
+the toolkit as tools.
