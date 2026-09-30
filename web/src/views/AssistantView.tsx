@@ -90,7 +90,8 @@ export function AssistantView() {
     try {
       const s = await api.llmStatus();
       setStatus(s);
-      setPrefs((p) => (p.provider === "ollama" && (!p.model || !s.ollama.models.includes(p.model)) ? { ...p, model: s.ollama.default } : p));
+      setPrefs((p) => (s.ollama.disabled && p.provider !== "claude" ? { provider: "claude", model: s.claude.model }  // public demo
+        : p.provider === "ollama" && (!p.model || !s.ollama.models.includes(p.model)) ? { ...p, model: s.ollama.default } : p));
     } catch (err) {
       toast((err as Error).message);
     }
@@ -171,7 +172,8 @@ export function AssistantView() {
   const submit = (e: FormEvent) => { e.preventDefault(); send(input, attachment); };
   const ollama = status?.ollama;
   const claude = status?.claude;
-  const ready = prefs.provider === "ollama" ? ollama?.running && ollama.models.length > 0 : claude?.sdk;
+  const ready = prefs.provider === "ollama" ? ollama?.running && ollama.models.length > 0
+    : claude?.sdk && (claude.key_set || !claude.own_key_required);
 
   return (
     <div className="flex h-[calc(100vh-56px)] flex-col">
@@ -182,9 +184,11 @@ export function AssistantView() {
       </ViewHeader>
 
       <Card className="flex flex-wrap items-center gap-3 p-3">
-        <Segmented layoutId="assistant-provider" value={prefs.provider}
-          onChange={(v) => update({ provider: v, model: v === "claude" ? (claude?.model ?? "claude-opus-5") : (ollama?.default ?? "") })}
-          options={[{ value: "ollama", label: "Local · Ollama", title: "Free, private, runs on this Mac" }, { value: "claude", label: "Claude", title: "Anthropic API, needs a key" }]} />
+        {!ollama?.disabled && (
+          <Segmented layoutId="assistant-provider" value={prefs.provider}
+            onChange={(v) => update({ provider: v, model: v === "claude" ? (claude?.model ?? "claude-opus-5") : (ollama?.default ?? "") })}
+            options={[{ value: "ollama", label: "Local · Ollama", title: "Free, private, runs on this Mac" }, { value: "claude", label: "Claude", title: "Anthropic API, needs a key" }]} />
+        )}
         {prefs.provider === "ollama" ? (
           <Select value={prefs.model} onChange={(e) => update({ model: e.target.value })} aria-label="Model" className="w-44 font-mono">
             {(ollama?.models ?? []).map((m) => <option key={m}>{m}</option>)}
@@ -199,7 +203,9 @@ export function AssistantView() {
             : <><span className="size-2 rounded-full bg-bad" />Install Ollama from ollama.com, then run: ollama pull qwen2.5:3b</>
           ) : !claude?.sdk ? <><span className="size-2 rounded-full bg-bad" />Needs the Anthropic SDK: pip install anthropic</>
             : <><span className={cx("size-2 rounded-full", claude.key_set ? "bg-ok" : "bg-warn")} />
-                {claude.key_set ? "Key set for this session" : "Uses ANTHROPIC_API_KEY, or paste a key:"}
+                {claude.key_set ? "Key set for this session"
+                  : claude.own_key_required ? "Paste your Anthropic API key. It's kept in this session's memory only:"
+                  : "Uses ANTHROPIC_API_KEY, or paste a key:"}
                 {!claude.key_set && (
                   <form className="flex gap-1" onSubmit={async (e) => { e.preventDefault(); await api.settings(keyDraft); setKeyDraft(""); refresh(); }}>
                     <Input type="password" value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} className="h-7 w-40" placeholder="sk-ant-…" />

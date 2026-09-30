@@ -15,7 +15,7 @@ const STATUS: Record<CheckStatus, { icon: typeof CheckCircle2; tone: string; lab
 const GRADE_TONE: Record<string, string> = { A: "text-ok", B: "text-ok", C: "text-warn", D: "text-bad", F: "text-bad" };
 
 export function MailView() {
-  const { toast, askAssistant } = useStore();
+  const { toast, askAssistant, demo } = useStore();
   const [form, setForm] = useState(() => remember("mail", { domain: "gmail.com", selectors: "", probe: false }));
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<MailReport | null>(null);
@@ -26,7 +26,7 @@ export function MailView() {
     if (!form.domain.trim()) return toast("Enter a domain or email address.");
     setBusy(true);
     try {
-      setReport(await api.mailcheck({ domain: form.domain.trim(), probe_smtp: form.probe,
+      setReport(await api.mailcheck({ domain: form.domain.trim(), probe_smtp: form.probe && !demo,
         selectors: form.selectors.split(",").map((s) => s.trim()).filter(Boolean) }));
     } catch (err) {
       toast((err as Error).message);
@@ -44,7 +44,7 @@ export function MailView() {
             placeholder="example.com or you@example.com" aria-label="Domain" spellCheck={false} />
           <Input value={form.selectors} onChange={(e) => update({ selectors: e.target.value })} className="w-44 font-mono"
             placeholder="DKIM selectors" aria-label="DKIM selectors" title="Comma-separated. Found in the s= tag of a DKIM-Signature header." />
-          <Toggle checked={form.probe} onChange={(v) => update({ probe: v })} label="Test STARTTLS on port 25" />
+          {!demo && <Toggle checked={form.probe} onChange={(v) => update({ probe: v })} label="Test STARTTLS on port 25" />}
           <Button tone="send" type="submit" busy={busy} icon={<ArrowRight className="size-4" />}>Check</Button>
         </form>
       </Card>

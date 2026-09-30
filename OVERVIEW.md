@@ -14,6 +14,9 @@ Everything runs on your own computer and talks to the real internet: real URLs, 
 resolvers and root servers, real mail servers. The only simulated parts are the optional local
 test servers.
 
+It also runs as a **public demo website**: the same app, where each visitor gets a private session
+and a network guard stops the server being used to reach private networks (see section 8).
+
 ---
 
 ## Contents
@@ -25,14 +28,15 @@ test servers.
 5. [The assistant and tool calling](#5-the-assistant-and-tool-calling)
 6. [The web interface](#6-the-web-interface)
 7. [Security and privacy](#7-security-and-privacy)
-8. [Testing](#8-testing)
-9. [Running it](#9-running-it)
-10. [Notable problems solved along the way](#10-notable-problems-solved-along-the-way)
-11. [Limitations](#11-limitations)
-12. [Repository, CI and releases](#12-repository-ci-and-releases)
-13. [Size of the project](#13-size-of-the-project)
-14. [Verified results](#14-verified-results)
-15. [Resume summary](#15-resume-summary)
+8. [The public demo website](#8-the-public-demo-website)
+9. [Testing](#9-testing)
+10. [Running it](#10-running-it)
+11. [Notable problems solved along the way](#11-notable-problems-solved-along-the-way)
+12. [Limitations](#12-limitations)
+13. [Repository, CI and releases](#13-repository-ci-and-releases)
+14. [Size of the project](#14-size-of-the-project)
+15. [Verified results](#15-verified-results)
+16. [Resume summary](#16-resume-summary)
 
 ---
 
@@ -111,12 +115,15 @@ protocol_toolkit/
   llm.py           chat providers with tool calling: Ollama and Claude
   agent.py         the assistant: tool definitions, argument checks, approvals, the loop
   explain.py       removes secrets before anything is sent to a model
+  guard.py         public demo: checks every outbound connection's address and port
+  demo.py          public demo: HTTP methods, mail destination and scan targets it allows
   webapp/          FastAPI backend, saved sessions, and the built React files it serves
   __main__.py      command line
 web/               React + TypeScript source for the interface, plus Playwright end-to-end tests
 tests/             Python tests
 packaging/macos/   builds "Protocol Toolkit.app" with PyInstaller + pywebview
-scripts/           verify_pcap_with_tshark.py: proves exports decrypt in Wireshark
+scripts/           verify_pcap_with_tshark.py (exports decrypt in Wireshark), smoke_demo.py (demo check)
+Dockerfile         the public demo image; render.yaml deploys it on Render
 .github/workflows/ CI on every push; Mac app release on every version tag
 ```
 
@@ -249,9 +256,54 @@ Tests cover all three.
 
 ---
 
-## 8. Testing
+## 8. The public demo website
 
-**111 Python tests** (`python3 -m pytest`). Most run against local fake servers, so they need no
+`python -m protocol_toolkit demo` runs the toolkit as a website anyone can open, so its work can be
+seen without installing anything. Letting strangers choose where a server connects is dangerous: it
+could be used to reach the host's private network or cloud metadata service (server-side request
+forgery, SSRF), to send spam, or to scan other people's machines. The demo keeps everything that
+shows the protocols working and removes those risks:
+
+| | In the demo |
+|---|---|
+| **HTTP** | GET and HEAD only, to public addresses, at most 5 MB per connection, 20 s timeout |
+| **DNS, trace, mail check** | Fully working, to public resolvers and name servers; no port-25 STARTTLS probe |
+| **SMTP** | Only to the built-in test inbox; nothing reaches real mailboxes |
+| **Scanner** | Only scanme.nmap.org, a host whose owners invite scans; at most 100 ports, one scan at a time |
+| **Test servers** | Always on and shared, but each visitor sees only their own mail and DNS queries |
+| **Assistant** | Claude with the visitor's own API key, held in their session's memory only |
+| **Inspector and exports** | Fully working, pcapng with TLS keys and HAR included |
+
+**How it's enforced:**
+- **A network guard (`guard.py`)** checks the address of every outbound TCP connect and UDP send in
+  the process, after DNS resolution. Only public addresses on web, DNS and QUIC ports are allowed
+  (plus the test servers on loopback, and any port on the scan target). Because the check is on the
+  address actually being connected to, it also covers redirects, DNS rebinding, names like
+  `localtest.me` that resolve to 127.0.0.1, IPv4-mapped and NAT64 IPv6 forms, MTA-STS fetches and
+  the assistant's tools.
+- **Per-visitor sessions:** a random HttpOnly cookie gives each visitor their own captures, cookie
+  jar, inbox, live events and API key, all in memory. Sessions expire after 30 idle minutes, and at
+  most 40 are kept (the least recently active are dropped first).
+- **Shared test servers, private results:** mail and DNS queries are matched to the visitor who sent
+  them by the connection's local port, so a shared inbox never shows one visitor's mail to another.
+- **Limits:** 30 actions a minute and 3 at a time per visitor, overall caps, 256 KB request bodies,
+  and at most 30 captures (6 MB) per visitor.
+- **Headers:** Host and Origin checks for the public host name, HSTS, and a Content-Security-Policy
+  that only allows the site's own scripts and connections.
+
+The UI reads the limits from the server and adapts: it shows a "Live demo" banner, offers only the
+allowed methods and scan targets, locks the SMTP server to the test inbox, and hides controls for
+things the demo can't do. A top navigation strip replaces the side rail on phones.
+
+**Deployment:** a two-stage `Dockerfile` builds the React UI with Node, then installs the Python
+package; `render.yaml` deploys it as a Render web service, with `/healthz` as the health check.
+Render's free tier blocks outbound SMTP ports, which the demo never uses.
+
+---
+
+## 9. Testing
+
+**146 Python tests** (`python3 -m pytest`). Most run against local fake servers, so they need no
 internet:
 
 - **Protocols:** HTTP (framing, chunked bodies, redirects, cookies, HTTPS with a generated
@@ -264,6 +316,10 @@ internet:
   IPv6, key blocks; HAR for redirect chains, POST bodies, binary bodies and sanitising; saved
   sessions surviving a restart.
 - **HTTP/3:** QUIC header parsing, plus a live request to Cloudflare.
+- **Public demo:** the guard's address rules (private, loopback, link-local, CGNAT, IPv6 unique-local,
+  IPv4-mapped, NAT64, 6to4, multicast), blocking through redirects and DNS rebinding, the download
+  limit, session isolation of captures, inbox and DNS log, the rate limit, refused features, host,
+  origin and CSP headers, and the assistant running with the visitor's key under the demo rules.
 - **Live checks:** a few run against the real internet (Google, Cloudflare, root servers, Gmail's
   records) and can be skipped with `-m "not network"`.
 
@@ -275,13 +331,18 @@ highlighting, pcapng and HAR downloads, theme persistence, and the assistant's s
 HTTP/3 captures are exported and opened with `tshark`, which must show the decrypted application
 layer.
 
+**Demo container check** (`scripts/smoke_demo.py`, in CI): the Docker image is built and started,
+then checked like a visitor would: session cookie, test DNS server, test inbox, blocked addresses
+and refused methods. With `--live` it also makes real HTTPS, HTTP/3, DNS, trace, mail check and scan
+requests, which is how a deployed copy is checked.
+
 The interface was also checked by driving it in a real browser and taking screenshots. That caught
 problems no unit test would: a freeze on single-line 1 MB pages, layout overflow, and a stale
 cached page after updates.
 
 ---
 
-## 9. Running it
+## 10. Running it
 
 ```bash
 cd protocol_toolkit
@@ -291,8 +352,10 @@ python3 -m protocol_toolkit selftest     # quick check of HTTP, DNS and scanning
 packaging/macos/build_app.sh             # build the Mac app yourself
 ```
 
-Once a release is published, the Mac app can also be downloaded from the repository's Releases page
-(right-click, then Open, the first time, because the build isn't notarised).
+The Mac app can also be downloaded from the repository's Releases page (right-click, then Open, the
+first time, because the build isn't notarised).
+
+To run the public demo website locally: `python3 -m protocol_toolkit demo --port 8000`.
 
 Optional extras: `pip install -e ".[all]"` adds HTTP/2 header compression, HTTP/3 (`aioquic`),
 Brotli, `certifi`, the Anthropic SDK and the web server packages. For the free assistant, install Ollama and run
@@ -305,7 +368,7 @@ checks.
 
 ---
 
-## 10. Notable problems solved along the way
+## 11. Notable problems solved along the way
 
 - **Cloudflare's DoH endpoint rejects HTTP/2 POSTs without `content-length`,** even though HTTP/2
   doesn't require it. The client now always sends it, as curl does.
@@ -329,7 +392,7 @@ checks.
 
 ---
 
-## 11. Limitations
+## 12. Limitations
 
 - **QUIC itself isn't hand-written.** HTTP/3 uses aioquic for the transport; the toolkit handles the
   socket, capture, labelling and HTTP/3 request flow.
@@ -339,11 +402,14 @@ checks.
   timing within a single read are synthesised.
 - **The Mac app isn't signed or notarised.** macOS asks for confirmation on first launch.
 - **Local models are slow on 8 GB machines and can be wrong.** Claude is faster and more reliable.
-- **The web UI is designed for desktop widths.** The Wire column hides below about 1280 px.
+- **The web UI is designed for desktop widths.** Phones get a top navigation strip, but the Wire
+  column hides below about 1280 px and some tables are cramped on small screens.
+- **Demo sessions live in memory.** A restart of the demo server (or the free host going to sleep
+  when idle) starts everyone's session afresh.
 
 ---
 
-## 12. Repository, CI and releases
+## 13. Repository, CI and releases
 
 - **Repository:** github.com/vaibhav375/protocol-toolkit.
 - **CI (`.github/workflows/ci.yml`):** on every push and pull request:
@@ -351,28 +417,29 @@ checks.
   - the live network tests
   - the UI type-check, production build and Playwright suite
   - the Wireshark decryption check
+  - the public demo's Docker image, built and smoke-tested
 
   The network-dependent jobs are allowed to fail without blocking, since they rely on third-party
   servers.
 - **Releases (`.github/workflows/release.yml`):** pushing a tag such as `v2.2.0` builds the Mac app
-  on a macOS runner and attaches `Protocol-Toolkit-macOS.zip` to a GitHub release. The workflow is in
-  place; no release has been published yet. The app was built and launched locally (84 MB bundle,
-  37 MB zip).
+  on a macOS runner and attaches `Protocol-Toolkit-macOS.zip` to a GitHub release. Release v2.2.0 was
+  published this way; its zip is 25.8 MB. (A local build was 84 MB unzipped.)
+- **Deployment (`Dockerfile`, `render.yaml`):** the public demo, deployed from the repository on Render.
 
-## 13. Size of the project
+## 14. Size of the project
 
 | Part | Lines |
 |---|---|
-| Protocol core, exports and assistant (Python) | ~4,450 |
-| Web backend (Python) | ~800 |
-| React interface (TypeScript/CSS) | ~2,400 |
-| Tests | ~1,600 (111 Python + 7 end-to-end) |
+| Protocol core, exports, assistant and demo guard (Python) | ~4,700 |
+| Web backend (Python) | ~1,100 |
+| React interface (TypeScript/CSS) | ~2,500 |
+| Tests | ~1,900 (146 Python + 7 end-to-end) |
 
 Started from a single 2,380-line script.
 
 ---
 
-## 14. Verified results
+## 15. Verified results
 
 Everything below was measured or observed while building and testing the project.
 
@@ -407,8 +474,19 @@ files and decoded the encrypted application layer, using only the keys embedded 
 - A mail check that hit a DNS timeout used to report "No SPF record". It now retries, and reports
   "couldn't check" if the lookup still fails.
 
-**Tests:** 111 Python tests pass in about 40 seconds. The 7 Playwright end-to-end tests pass in
-about 15 seconds against the real app.
+**Tests:** all 146 Python tests pass in about 40 seconds (one is skipped on machines without its
+optional tool). The 7 Playwright end-to-end tests pass in about 20 seconds against the real app.
+
+**Mac app release:** pushing the `v2.2.0` tag built the app on GitHub's macOS runner and published it
+as a release with a 25.8 MB download.
+
+**Public demo, run locally** with `scripts/smoke_demo.py --live`, all 20 checks passed:
+- HTTPS to example.com over HTTP/2, and HTTP/3 over QUIC to Cloudflare, through the network guard
+- DNS over UDP, TCP, TLS and HTTPS, a root-to-authoritative trace, and a mail check of gmail.com
+- a scan of scanme.nmap.org that found SSH (with its banner) and HTTP
+- mail and DNS queries to the shared test servers appearing only in the sender's session
+- requests to the cloud metadata address (169.254.169.254), to the server itself, and to
+  `localtest.me` (a public name that resolves to 127.0.0.1) refused with an explanation
 
 **Assistant:** a free local model (`qwen2.5:3b` through Ollama) chose and ran the right tools on its
 own. It used `dns_lookup` and `http_request` to answer "what are example.com's addresses and does it
@@ -417,10 +495,10 @@ appeared in the Wire column.
 
 ---
 
-## 15. Resume summary
+## 16. Resume summary
 
 **Protocol Toolkit**: network protocol workbench with LLM tool calling
-*Python, sockets, TLS, HTTP/2, HTTP/3/QUIC, DNS, FastAPI, React, TypeScript, Playwright, GitHub Actions*
+*Python, sockets, TLS, HTTP/2, HTTP/3/QUIC, DNS, FastAPI, React, TypeScript, Playwright, Docker, GitHub Actions*
 github.com/vaibhav375/protocol-toolkit
 
 - **Protocols:** implemented HTTP/1.1, HTTP/2 (RFC 9113 framing and flow control) and DNS over UDP,
@@ -435,9 +513,13 @@ github.com/vaibhav375/protocol-toolkit
   removed from results. It runs locally on Qwen 2.5 through Ollama, or on Claude.
 - **Web app and security:** built a React 19 and TypeScript UI on a FastAPI backend that live-streams
   captured bytes. Secured the local server against DNS rebinding and cross-site requests with a
-  loopback-only listener, a per-launch session key and Host/Origin checks. Packaged it as a macOS app.
-- **Testing and CI:** 118 automated tests (111 pytest and 7 Playwright end-to-end) run in GitHub
-  Actions across Python 3.10 to 3.13; all 6 CI jobs passed on the first push.
+  loopback-only listener, a per-launch session key and Host/Origin checks. Packaged it as a macOS app
+  released through GitHub Actions.
+- **Public deployment:** deployed it as a public demo with per-visitor sessions and an SSRF guard
+  that checks every outbound connection's resolved address, blocking private networks, cloud
+  metadata, DNS rebinding and redirect tricks. Containerised with Docker and deployed on Render.
+- **Testing and CI:** 153 automated tests (146 pytest and 7 Playwright end-to-end) run in GitHub
+  Actions across Python 3.10 to 3.13, plus a job that builds the demo container and smoke-tests it.
 
 **One-line version:** built a raw-socket protocol workbench (HTTP/1.1, HTTP/2, HTTP/3, DNS, SMTP)
 with byte-level capture, Wireshark-decryptable exports verified in CI, and an LLM agent that uses

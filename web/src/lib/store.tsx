@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, persist, remember, type ServersState, type WireSummary } from "./api";
+import { api, persist, remember, type DemoInfo, type ServersState, type WireSummary } from "./api";
 
 export type View = "http" | "dns" | "smtp" | "mail" | "scan" | "lab" | "assistant" | "inspector";
 
@@ -28,6 +28,8 @@ interface Store {
   subscribe: (fn: Listener) => () => void;
   askAssistant: (question: string, attachment?: Attachment) => void;
   pendingAsk: { question: string; attachment?: Attachment } | null;
+  /** Limits of the public demo website; null in the desktop app */
+  demo: DemoInfo | null;
   takePendingAsk: () => { question: string; attachment?: Attachment } | null;
 }
 
@@ -48,6 +50,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<"dark" | "light">(() => remember("ui", { theme: "dark" as "dark" | "light" }).theme);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [pendingAsk, setPendingAsk] = useState<Store["pendingAsk"]>(null);
+  const [demo, setDemo] = useState<DemoInfo | null>(null);
   const listeners = useRef(new Set<Listener>());
   const toastId = useRef(0);
 
@@ -63,6 +66,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     api.wires().then(setWires).catch(() => undefined);
     api.servers().then(setServers).catch(() => undefined);
+    api.info().then((info) => setDemo(info.demo)).catch(() => undefined);
     // Live events: new captures, test-server activity, scan results
     const source = new EventSource("/api/events", { withCredentials: true });
     source.onopen = () => setConnected(true);
@@ -99,8 +103,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     subscribe: (fn) => { listeners.current.add(fn); return () => { listeners.current.delete(fn); }; },
     askAssistant: (question, attachment) => { setPendingAsk({ question, attachment }); setView("assistant"); },
     pendingAsk,
+    demo,
     takePendingAsk: () => { const p = pendingAsk; setPendingAsk(null); return p; },
-  }), [view, wires, inspected, servers, connected, theme, toasts, toast, pendingAsk]);
+  }), [view, wires, inspected, servers, connected, theme, toasts, toast, pendingAsk, demo]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

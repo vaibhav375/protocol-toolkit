@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import { ArrowRight, Inbox, ScanSearch, Send, Server } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api, persist, remember, type SMTPResult } from "../lib/api";
 import { useStore } from "../lib/store";
 import { Button, Card, cx, Empty, Field, Input, Segmented, TextArea, Toggle, ViewHeader } from "../components/ui";
@@ -12,13 +12,20 @@ const PRESETS: Record<string, { server: string; port: number; security: string }
 };
 
 export function SmtpView() {
-  const { toast, inspect, go, servers, setServers } = useStore();
+  const { toast, inspect, go, servers, setServers, demo } = useStore();
   const [form, setForm] = useState(() => remember("smtp", {
     server: "127.0.0.1", port: 1025, security: "none", verify: true, username: "",
     from: "you@example.com", to: "friend@example.com", subject: "Hello from Protocol Toolkit",
     body: "This message was sent by a hand-written SMTP client.",
   }));
   const [password, setPassword] = useState("");  // never stored
+  const presets = demo ? ["Built-in test server"] : Object.keys(PRESETS);
+  // The public demo only delivers to its own test inbox
+  useEffect(() => {
+    if (demo && (form.server !== demo.smtp.server || form.port !== demo.smtp.port)) {
+      update({ server: demo.smtp.server, port: demo.smtp.port, security: "none" });
+    }
+  }, [demo]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SMTPResult | null>(null);
   const update = (patch: Partial<typeof form>) => setForm((f) => { const next = { ...f, ...patch }; persist("smtp", next); return next; });
@@ -59,7 +66,7 @@ export function SmtpView() {
     <>
       <ViewHeader title="SMTP" subtitle="Send a real email and watch the whole SMTP conversation, including the switch to TLS.">
         <div className="flex flex-wrap gap-1">
-          {Object.keys(PRESETS).map((name) => (
+          {presets.map((name) => (
             <Button key={name} tone="ghost" className="h-8" icon={name.startsWith("Built") ? <Server className="size-3.5" /> : undefined}
               onClick={() => applyPreset(name)}>{name}</Button>
           ))}
@@ -69,8 +76,10 @@ export function SmtpView() {
       <form onSubmit={send}>
         <Card className="space-y-4 p-4">
           <div className="grid grid-cols-[1fr_96px_auto] items-end gap-3">
-            <Field label="Server"><Input value={form.server} onChange={(e) => update({ server: e.target.value })} className="font-mono" spellCheck={false} /></Field>
-            <Field label="Port"><Input type="number" value={form.port} onChange={(e) => update({ port: Number(e.target.value) })} className="font-mono" /></Field>
+            <Field label="Server" hint={demo ? "the demo's test inbox" : undefined}>
+              <Input value={form.server} onChange={(e) => update({ server: e.target.value })} className="font-mono" spellCheck={false} disabled={!!demo} />
+            </Field>
+            <Field label="Port"><Input type="number" value={form.port} onChange={(e) => update({ port: Number(e.target.value) })} className="font-mono" disabled={!!demo} /></Field>
             <Segmented layoutId="smtp-sec" value={form.security} onChange={(v) => update({ security: v, port: v === "implicit" ? 465 : v === "starttls" ? 587 : form.port })}
               options={[{ value: "none", label: "Plain" }, { value: "starttls", label: "STARTTLS" }, { value: "implicit", label: "TLS" }]} />
           </div>

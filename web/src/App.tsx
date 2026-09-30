@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Binary, Bot, Globe, MailCheck, Moon, Network, Radar, Send, Server, Sun, X } from "lucide-react";
+import { ArrowUpRight, Binary, Bot, Globe, MailCheck, Moon, Network, Radar, Send, Server, Sun, X } from "lucide-react";
 import { useEffect, type ComponentType } from "react";
 import { cx } from "./components/ui";
 import { WireTape } from "./components/wire";
@@ -46,11 +46,11 @@ function Logo() {
 }
 
 function Rail() {
-  const { view, go, theme, toggleTheme, servers } = useStore();
+  const { view, go, theme, toggleTheme, servers, demo } = useStore();
   const groups = [...new Set(NAV.map((n) => n.group))];
   const labRunning = servers && (servers.smtp.running || servers.dns.running);
   return (
-    <nav className="flex w-[212px] shrink-0 flex-col border-r border-line bg-panel/70 backdrop-blur-md" aria-label="Tools">
+    <nav className="flex w-[212px] shrink-0 flex-col border-r border-line bg-panel/70 backdrop-blur-md max-md:hidden" aria-label="Tools">
       <Logo />
       <div className="flex-1 space-y-5 px-2.5">
         {groups.map((group) => (
@@ -75,13 +75,50 @@ function Rail() {
         ))}
       </div>
       <div className="flex items-center justify-between border-t border-line px-4 py-3">
-        <span className="text-[11px] text-faint">Runs on this Mac</span>
+        <span className="text-[11px] text-faint">{demo ? "Public demo" : "Runs on this Mac"}</span>
         <button onClick={toggleTheme} className="rounded-md p-1.5 text-mute hover:bg-raised hover:text-ink"
           aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
           {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </button>
       </div>
     </nav>
+  );
+}
+
+/** Phones: the rail becomes a scrolling strip of tools along the top */
+function MobileNav() {
+  const { view, go } = useStore();
+  return (
+    <nav className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-panel/80 px-2 py-2 backdrop-blur-md md:hidden"
+      aria-label="Tools">
+      {NAV.map(({ view: v, label, icon: Icon }) => (
+        <button key={v} onClick={() => go(v)} aria-current={view === v ? "page" : undefined}
+          className={cx("flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px]",
+            view === v ? "bg-raised text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-mute")}>
+          <Icon className={cx("size-3.5", view === v && "text-tx")} />{label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+const REPO = "https://github.com/vaibhav375/protocol-toolkit";
+
+/** Public demo only: say where it runs and what it won't do */
+function DemoBanner() {
+  const { demo } = useStore();
+  if (!demo) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-tx/[.06] px-4 py-2 text-[12px] text-mute md:px-8">
+      <span className="font-medium text-tx">Live demo</span>
+      <span>
+        Real traffic from a cloud server, in a private session only you can see. HTTP is limited to {demo.http_methods.join(" and ")}, mail
+        goes to a test inbox, and scans only reach {Object.keys(demo.scan_targets).join(", ")}.
+      </span>
+      <a href={REPO} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-tx hover:underline">
+        Get the full app <ArrowUpRight className="size-3.5" />
+      </a>
+    </div>
   );
 }
 
@@ -119,12 +156,14 @@ export function App() {
   }, [go]);
 
   return (
-    <div className="backdrop flex h-full overflow-hidden">
+    <div className="backdrop flex h-full overflow-hidden max-md:flex-col">
       <Rail />
+      <MobileNav />
       <main className="scroll-thin min-w-0 flex-1 overflow-y-auto">
+        <DemoBanner />
         <AnimatePresence mode="wait">
           <motion.div key={view} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.18 }} className={cx("mx-auto px-8 py-7", view === "inspector" ? "max-w-[1500px]" : "max-w-[1100px]")}>
+            transition={{ duration: 0.18 }} className={cx("mx-auto px-4 py-5 md:px-8 md:py-7", view === "inspector" ? "max-w-[1500px]" : "max-w-[1100px]")}>
             <Current />
           </motion.div>
         </AnimatePresence>

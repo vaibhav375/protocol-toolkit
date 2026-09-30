@@ -287,7 +287,7 @@ class DNSTestServer:
                 return found
         return []
 
-    def answer(self, query: bytes) -> bytes:
+    def answer(self, query: bytes, peer: str = "") -> bytes:
         try:
             q = DNSPacket.from_bytes(query)
         except (ValueError, struct.error, IndexError):
@@ -314,7 +314,7 @@ class DNSTestServer:
             rdata = encode_rdata(r)
             out += encode_name(r.name) + struct.pack("!HHIH", r.type, 1, r.ttl, len(rdata)) + rdata
         result = {0: f"{len(answers)} answer(s)" if answers else "NODATA", 3: "NXDOMAIN"}[rcode]
-        self.queries.append((time.time(), "", qname, RECORD_TYPES.get(qtype, str(qtype)), result))
+        self.queries.append((time.time(), peer, qname, RECORD_TYPES.get(qtype, str(qtype)), result))
         self.on_log(f"DNS query {qname} {RECORD_TYPES.get(qtype, qtype)} -> {result}")
         return out
 
@@ -337,7 +337,7 @@ class DNSTestServer:
                     continue
                 except OSError:
                     break
-                reply = self.answer(data)
+                reply = self.answer(data, f"{addr[0]}:{addr[1]}")
                 if reply:
                     udp.sendto(reply, addr)
 
@@ -358,7 +358,7 @@ class DNSTestServer:
                         if not chunk:
                             return
                         data += chunk
-                    reply = outer.answer(data)
+                    reply = outer.answer(data, f"{self.client_address[0]}:{self.client_address[1]}")
                     sock.sendall(struct.pack("!H", len(reply)) + reply)
 
         try:

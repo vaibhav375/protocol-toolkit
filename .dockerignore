@@ -1,0 +1,13 @@
+.git
+.github
+**/__pycache__
+**/*.pyc
+*.egg-info
+build
+dist
+web/node_modules
+web/test-results
+web/playwright-report
+packaging
+tests
+scripts

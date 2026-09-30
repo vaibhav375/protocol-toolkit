@@ -11,10 +11,12 @@
     python -m protocol_toolkit explain https://example.com --provider claude
     python -m protocol_toolkit serve                                      # SMTP :1025 + DNS :10325
     python -m protocol_toolkit selftest
+    python -m protocol_toolkit demo --port 8000                           # the public demo website
 """
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from . import __version__
@@ -134,6 +136,12 @@ def cmd_serve(args) -> int:
     return 0
 
 
+def cmd_demo(args) -> int:
+    from .webapp.launch import run_demo
+    run_demo(args.host, args.port)
+    return 0
+
+
 def cmd_selftest(args) -> int:
     from .httpclient import HTTPClient
     from .dnsclient import DNSClient
@@ -225,6 +233,11 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_serve)
 
     sub.add_parser("selftest", help="check HTTP, DNS and scanning against public servers").set_defaults(func=cmd_selftest)
+
+    p = sub.add_parser("demo", help="run the public demo website (limited, one private session per visitor)")
+    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    p.set_defaults(func=cmd_demo)
 
     args = parser.parse_args(argv)
     if not args.command:

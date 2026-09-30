@@ -1,4 +1,5 @@
-"""Start the web UI on 127.0.0.1 and open it in the browser (or a native window)."""
+"""Start the web UI on 127.0.0.1 and open it in the browser (or a native window),
+or run the public demo website."""
 from __future__ import annotations
 
 import os
@@ -49,3 +50,19 @@ def run(port: int = 0, open_browser: bool = True, window: bool = False) -> None:
     if open_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     server.run()
+
+
+def run_demo(host: str = "0.0.0.0", port: int = 8000) -> None:
+    """The public demo website (see server.py). It answers to the host names in PT_PUBLIC_HOST
+    (comma separated) or, on Render, the service's own name; with neither, only to loopback."""
+    import uvicorn
+    from .server import create_app
+
+    hosts = [h for h in os.environ.get("PT_PUBLIC_HOST", "").split(",") if h.strip()]
+    if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+        hosts.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
+    app = create_app(demo=True, public_hosts=hosts)
+    print(f"Protocol Toolkit public demo on {host}:{port}, answering to: {', '.join(hosts) or 'loopback only'}",
+          flush=True)
+    uvicorn.run(app, host=host, port=port, ws="websockets", ws_max_size=1024 * 1024,
+                limit_concurrency=200, log_level="info", server_header=False)

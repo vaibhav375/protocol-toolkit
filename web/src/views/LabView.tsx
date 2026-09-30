@@ -8,7 +8,8 @@ import { Button, Card, cx, Input, StatusDot, TextArea, ViewHeader } from "../com
 type Message = MailItem & { headers: string; body: string };
 
 export function LabView() {
-  const { servers, setServers, toast, subscribe } = useStore();
+  const { servers, setServers, toast, subscribe, demo } = useStore();
+  const locked = !!servers?.locked;
   const [smtpPort, setSmtpPort] = useState("1025");
   const [dnsPort, setDnsPort] = useState("10325");
   const [inbox, setInbox] = useState<MailItem[]>([]);
@@ -52,7 +53,9 @@ export function LabView() {
   const dns = servers?.dns;
   return (
     <>
-      <ViewHeader title="Test servers" subtitle="Local SMTP and DNS servers to practise against. They only accept connections from this Mac and stop when the toolkit quits." />
+      <ViewHeader title="Test servers" subtitle={demo
+        ? "SMTP and DNS servers to practise against. In the demo they're always on and shared, but you only see the mail and queries you sent."
+        : "Local SMTP and DNS servers to practise against. They only accept connections from this Mac and stop when the toolkit quits."} />
       <div className="grid gap-4 min-[1560px]:grid-cols-2">
         <Card className="flex flex-col p-5">
           <div className="flex items-center gap-3">
@@ -66,8 +69,10 @@ export function LabView() {
           <div className="mt-4 flex items-center gap-2">
             <span className="whitespace-nowrap text-[12px] text-mute">127.0.0.1 :</span>
             <Input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} disabled={smtp?.running} className="w-24 font-mono" aria-label="SMTP port" />
-            <Button tone={smtp?.running ? "danger" : "send"} icon={smtp?.running ? <Square className="size-3.5" /> : <Play className="size-4" />}
-              onClick={() => toggle("smtp")}>{smtp?.running ? "Stop" : "Start"}</Button>
+            {!locked && (
+              <Button tone={smtp?.running ? "danger" : "send"} icon={smtp?.running ? <Square className="size-3.5" /> : <Play className="size-4" />}
+                onClick={() => toggle("smtp")}>{smtp?.running ? "Stop" : "Start"}</Button>
+            )}
             <Button tone="ghost" className="ml-auto" icon={<Trash2 className="size-4" />} disabled={!inbox.length}
               onClick={async () => { await api.clearInbox(); setInbox([]); setOpen(null); }}>Clear</Button>
           </div>
@@ -122,13 +127,20 @@ export function LabView() {
           <div className="mt-4 flex items-center gap-2">
             <span className="whitespace-nowrap text-[12px] text-mute">127.0.0.1 :</span>
             <Input value={dnsPort} onChange={(e) => setDnsPort(e.target.value)} disabled={dns?.running} className="w-24 font-mono" aria-label="DNS port" />
-            <Button tone={dns?.running ? "danger" : "send"} icon={dns?.running ? <Square className="size-3.5" /> : <Play className="size-4" />}
-              onClick={() => toggle("dns")}>{dns?.running ? "Stop" : "Start"}</Button>
-            <Button tone="plain" className="ml-auto" icon={<Check className="size-4" />} onClick={applyZone}>Apply zone</Button>
+            {!locked && (
+              <>
+                <Button tone={dns?.running ? "danger" : "send"} icon={dns?.running ? <Square className="size-3.5" /> : <Play className="size-4" />}
+                  onClick={() => toggle("dns")}>{dns?.running ? "Stop" : "Start"}</Button>
+                <Button tone="plain" className="ml-auto" icon={<Check className="size-4" />} onClick={applyZone}>Apply zone</Button>
+              </>
+            )}
           </div>
-          <TextArea value={zone} onChange={(e) => setZone(e.target.value)} rows={10} spellCheck={false}
+          <TextArea value={zone} onChange={(e) => setZone(e.target.value)} rows={10} spellCheck={false} readOnly={locked}
             className="mt-4 w-full whitespace-pre" aria-label="Zone records" />
-          <p className="mt-2 text-[11.5px] text-faint">One record per line: name, type, value. Types: A AAAA CNAME MX TXT NS PTR SRV. *.name is a wildcard.</p>
+          <p className="mt-2 text-[11.5px] text-faint">
+            {locked ? "The demo's zone is shared, so it can't be edited here; the app you run yourself lets you change it."
+              : "One record per line: name, type, value. Types: A AAAA CNAME MX TXT NS PTR SRV. *.name is a wildcard."}
+          </p>
           <div className="mt-3 rounded-lg border border-line bg-void/40 p-3">
             <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[.12em] text-faint">Queries received</div>
             <ul className="scroll-thin max-h-28 overflow-y-auto font-mono text-[11.5px] text-mute">

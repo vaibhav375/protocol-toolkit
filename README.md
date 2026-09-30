@@ -8,7 +8,8 @@ went over the wire, how long each step took, and you can open the same capture i
 browser's dev tools.
 
 Everything runs on your machine and talks to the real internet: real websites, real DNS resolvers
-and root servers, real mail servers. See [OVERVIEW.md](OVERVIEW.md) for how it works inside.
+and root servers, real mail servers. It can also run as a [public demo website](#public-demo) with a
+private session per visitor. See [OVERVIEW.md](OVERVIEW.md) for how it works inside.
 
 ## What it does
 
@@ -66,11 +67,27 @@ it, then it moves into an HttpOnly, same-site cookie. Requests with an unexpecte
 are refused, so a website you visit can't use the toolkit to scan ports or send mail. Captures are
 saved with owner-only permissions and can be cleared from the Inspector.
 
+## Public demo
+
+`python -m protocol_toolkit demo` serves the toolkit as a website anyone can use. Each visitor gets
+a private, in-memory session. A network guard checks every outbound connection's resolved address,
+so the server can't be pointed at private networks or cloud metadata, including through redirects
+or DNS rebinding. HTTP is limited to GET and HEAD, mail only reaches the built-in test inbox, scans
+only reach scanme.nmap.org, and the assistant uses the visitor's own Claude key.
+
+**Deploy your own on Render:** fork this repository, then in the Render dashboard choose
+**New → Blueprint** and pick the fork. `render.yaml` builds the `Dockerfile` and serves it on the
+free plan. Check a deployed copy with:
+
+```bash
+python scripts/smoke_demo.py https://<your-service>.onrender.com --live
+```
+
 ## Development
 
 ```bash
 pip install -e ".[all,dev]"
-python -m pytest                     # 111 tests; add -m "not network" for offline-only
+python -m pytest                     # 146 tests; add -m "not network" for offline-only
 
 cd web && npm install
 npm run dev                          # UI with hot reload (see vite.config.ts for the backend command)
@@ -81,7 +98,8 @@ packaging/macos/build_app.sh         # builds "Protocol Toolkit.app"
 ```
 
 CI runs lint and tests on Python 3.10, 3.12 and 3.13, the UI type-check, build and end-to-end
-tests, and a job that opens exported captures in Wireshark's `tshark` to prove they decrypt.
+tests, a job that opens exported captures in Wireshark's `tshark` to prove they decrypt, and a job
+that builds the demo container and smoke-tests it.
 Pushing a `v*` tag builds the Mac app and attaches it to a GitHub release.
 
 Only scan systems you own or have permission to test.

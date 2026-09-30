@@ -14,7 +14,7 @@ import ssl
 import time
 from typing import List, Optional, Tuple
 
-from .net import ConnectionError_
+from .net import ConnectionError_, check_size
 from .wire import Field, WireLog
 
 AIOQUIC_AVAILABLE = importlib.util.find_spec("aioquic") is not None
@@ -211,6 +211,7 @@ def request(host: str, port: int, method: str, authority: str, path: str, header
                                  [Field(0, 0, k, v, 3) for k, v in decoded])
                     elif isinstance(h3_event, DataReceived):
                         response_body += h3_event.data
+                        check_size(len(response_body))
                         if h3_event.data:
                             wire.add("in", "HTTP/3", h3_event.data, f"DATA stream {stream_id} {len(h3_event.data)} bytes")
                     if h3_event.stream_ended:

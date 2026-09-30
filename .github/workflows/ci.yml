@@ -54,6 +54,18 @@ jobs:
       - run: sudo DEBIAN_FRONTEND=noninteractive apt-get update -q && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q tshark
       - run: python scripts/verify_pcap_with_tshark.py
 
+  docker:
+    name: Public demo container builds and works
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t protocol-toolkit-demo .
+      - run: docker run -d --name demo -p 10000:10000 protocol-toolkit-demo
+      - name: Smoke test (sessions, test servers, blocked addresses)
+        run: python3 scripts/smoke_demo.py http://127.0.0.1:10000
+      - if: failure()
+        run: docker logs demo
+
   web:
     name: UI type-check, build and end-to-end tests
     runs-on: ubuntu-latest

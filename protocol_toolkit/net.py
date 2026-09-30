@@ -18,8 +18,17 @@ CERT_HELP = ("On macOS with python.org Python, run 'Install Certificates.command
              "your Python folder (or `pip install certifi`), or turn off 'Verify TLS'.")
 
 
+MAX_RECEIVE: Optional[int] = None  # bytes per connection; set by the public demo (see guard.py)
+
+
 class ConnectionError_(OSError):
     """Connection failure with a human-readable explanation"""
+
+
+def check_size(received: int) -> None:
+    if MAX_RECEIVE is not None and received > MAX_RECEIVE:
+        raise ConnectionError_(f"Stopped after {MAX_RECEIVE // (1024 * 1024)} MB: the public demo limits "
+                               "how much one request may download")
 
 
 def make_tls_context(verify: bool = True, alpn: Optional[Sequence[str]] = None) -> ssl.SSLContext:
@@ -54,6 +63,7 @@ class Connection:
         self.tls_info: Optional[dict] = None
         self.flow: Optional[int] = None
         self._keylog_path: Optional[str] = None
+        self._received = 0
 
     # ------------------------------------------------------------ connect
 
@@ -198,10 +208,15 @@ class Connection:
             data = self.sock.recv(size)
             self._eof = not data
             self.wire.segment(self.flow, "in", data)
+            self._received += len(data)
+            check_size(self._received)
             return data
         while True:
             try:
-                return self._tls.read(size)
+                data = self._tls.read(size)
+                self._received += len(data)
+                check_size(self._received)
+                return data
             except ssl.SSLWantReadError:
                 self._flush()
                 if not self._fill():

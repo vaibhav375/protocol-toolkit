@@ -14,7 +14,8 @@ function statusTone(status: number): string {
 }
 
 export function HttpView() {
-  const { toast, inspect, askAssistant } = useStore();
+  const { toast, inspect, askAssistant, demo } = useStore();
+  const methods = demo?.http_methods ?? METHODS;
   const [form, setForm] = useState(() => remember("http", {
     url: "https://example.com/", method: "GET", headers: "Accept: */*", body: "",
     version: "auto", verify: true, follow: true, cookies: true,
@@ -30,6 +31,7 @@ export function HttpView() {
     e?.preventDefault();
     const f = { ...form, ...override };
     if (!f.url.trim()) return toast("Enter a URL to send the request to.");
+    if (!methods.includes(f.method)) return toast(`The public demo only sends ${methods.join(" and ")} requests.`);
     setBusy(true);
     setShowAll(false);
     const headers = Object.fromEntries(f.headers.split("\n").filter((l) => l.includes(":"))
@@ -66,7 +68,7 @@ export function HttpView() {
       <Card className="p-4">
         <form onSubmit={send} className="flex gap-2">
           <Select value={form.method} onChange={(e) => update({ method: e.target.value })} aria-label="Method" className="w-[104px] font-mono">
-            {METHODS.map((m) => <option key={m}>{m}</option>)}
+            {methods.map((m) => <option key={m}>{m}</option>)}
           </Select>
           <Input value={form.url} onChange={(e) => update({ url: e.target.value })} placeholder="https://example.com/"
             aria-label="URL" className="flex-1 font-mono" spellCheck={false} />
@@ -82,7 +84,7 @@ export function HttpView() {
           <Toggle checked={form.cookies} onChange={(v) => update({ cookies: v })} label="Cookie jar" />
           <div className="ml-auto flex gap-1">
             <Button tone="ghost" className="h-8" onClick={() => setEditor(editor === "headers" ? null : "headers")}>Headers</Button>
-            <Button tone="ghost" className="h-8" onClick={() => setEditor(editor === "body" ? null : "body")}>Body</Button>
+            {!demo && <Button tone="ghost" className="h-8" onClick={() => setEditor(editor === "body" ? null : "body")}>Body</Button>}
           </div>
         </div>
         <AnimatePresence initial={false}>

@@ -1,0 +1,12 @@
+# Render Blueprint for the public demo. In the Render dashboard: New > Blueprint, pick this repo.
+# The service answers to its own onrender.com name automatically (RENDER_EXTERNAL_HOSTNAME);
+# for a custom domain, set PT_PUBLIC_HOST to it as well.
+services:
+  - type: web
+    name: protocol-toolkit
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz

@@ -12,7 +12,7 @@ import json
 import socket
 import threading
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 from . import dnsclient, scanner, smtpclient
 from .explain import redact
@@ -21,6 +21,9 @@ from .llm import LLMError, Provider, ToolCall, ToolSpec
 from .mailcheck import DeliverabilityChecker
 from .net import Connection
 from .wire import WireLog
+
+if TYPE_CHECKING:
+    from .demo import DemoRules
 
 MAX_RESULT_CHARS = 6000
 MAX_STEPS = 10
@@ -66,8 +69,10 @@ def _cap(text: str) -> str:
     return text
 
 
-def build_tools(publish_wire: Callable[[WireLog], None], current_capture: Callable[[], str]) -> Dict[str, Tool]:
-    """The toolkit's clients exposed as tools. publish_wire sends each capture to the inspector."""
+def build_tools(publish_wire: Callable[[WireLog], None], current_capture: Callable[[], str],
+                demo: Optional["DemoRules"] = None) -> Dict[str, Tool]:
+    """The toolkit's clients exposed as tools. publish_wire sends each capture to the inspector.
+    With demo rules (the public website), tools refuse what the demo doesn't allow."""
 
     def dns_lookup(a):
         # Models naturally ask for several types at once ("A, MX and TXT"), so accept a list
@@ -97,6 +102,8 @@ def build_tools(publish_wire: Callable[[WireLog], None], current_capture: Callab
         return "\n".join(out)
 
     def http_request(a):
+        if demo:
+            demo.http(a.get("method", "GET"), a.get("body"))
         wire = WireLog(f"Assistant: {a.get('method', 'GET')} {a['url']}")
         try:
             r = HTTPClient().send(a["url"], a.get("method", "GET").upper(), a.get("headers") or {},
@@ -139,14 +146,21 @@ def build_tools(publish_wire: Callable[[WireLog], None], current_capture: Callab
 
     def check_email_domain(a):
         report = DeliverabilityChecker().run(a["domain"], a.get("dkim_selectors") or None,
-                                             probe_smtp=bool(a.get("probe_smtp", False)))
+                                             probe_smtp=bool(a.get("probe_smtp", False)) and not demo)
         return report.to_text()
 
     def port_scan(a):
-        ports = scanner.COMMON_PORTS if a.get("ports", "common") == "common" else scanner.parse_ports(a["ports"])
-        if len(ports) > 2000:
-            raise ValueError("At most 2000 ports per scan from the assistant")
-        results = scanner.scan(a["host"], ports, 0.5)
+        if demo:
+            ports = demo.begin_scan(a["host"], a.get("ports", "common"))
+            try:
+                results = scanner.scan(a["host"], ports, 0.5, workers=50)
+            finally:
+                demo.end_scan()
+        else:
+            ports = scanner.COMMON_PORTS if a.get("ports", "common") == "common" else scanner.parse_ports(a["ports"])
+            if len(ports) > 2000:
+                raise ValueError("At most 2000 ports per scan from the assistant")
+            results = scanner.scan(a["host"], ports, 0.5)
         found = sorted((r for r in results.values() if r.status == scanner.OPEN), key=lambda r: r.port)
         lines = [f"{len(found)} open of {len(results)} scanned on {a['host']}"]
         lines += [f"{r.port}/tcp {r.service or scanner.service_name(r.port)} {r.banner}".rstrip() for r in found]
@@ -157,6 +171,8 @@ def build_tools(publish_wire: Callable[[WireLog], None], current_capture: Callab
         return f"Port scan of {where} ({a.get('ports', 'common')} ports)"
 
     def send_email(a):
+        if demo:
+            demo.smtp(a["server"], int(a.get("port", 1025)))
         wire = WireLog(f"Assistant: SMTP {a['server']}:{a.get('port', 1025)}")
         try:
             result = smtpclient.send_email(a["server"], int(a.get("port", 1025)), a["from"], [a["to"]],
@@ -262,12 +278,13 @@ class Agent:
     def __init__(self, provider: Provider, tools: Dict[str, Tool],
                  approve: Callable[[ToolCall, str], bool],
                  on_text: Callable[[str], None] = lambda s: None,
-                 on_tool: Callable[[str, ToolCall, str], None] = lambda stage, call, info: None):
+                 on_tool: Callable[[str, ToolCall, str], None] = lambda stage, call, info: None,
+                 system: str = SYSTEM_PROMPT):
         self.provider = provider
         self.tools = tools
         self.approve, self.on_text, self.on_tool = approve, on_text, on_tool
         self.cancel = threading.Event()
-        provider.reset(SYSTEM_PROMPT)
+        provider.reset(system)
 
     def ask(self, text: str) -> str:
         self.cancel.clear()

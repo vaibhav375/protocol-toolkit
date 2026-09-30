@@ -68,6 +68,7 @@ export interface MailReport {
 export interface ScanRow { port: number; status: "Open" | "Closed" | "Filtered"; service: string; banner: string; tls: string }
 
 export interface ServersState {
+  locked?: boolean;  // public demo: always on and shared
   smtp: { running: boolean; port: number; messages: number };
   dns: { running: boolean; port: number; zone: string; queries: string[] };
 }
@@ -75,11 +76,20 @@ export interface ServersState {
 export interface MailItem { id: number; received: number; from: string; to: string[]; subject: string; authenticated_as: string }
 
 export interface LLMStatus {
-  ollama: { running: boolean; version: string; models: string[]; installed: boolean; default: string };
-  claude: { sdk: boolean; model: string; key_set: boolean };
+  ollama: { running: boolean; version: string; models: string[]; installed: boolean; default: string; disabled?: boolean };
+  claude: { sdk: boolean; model: string; key_set: boolean; own_key_required?: boolean };
 }
 
-export interface Info { version: string; http2: boolean; query_types: string[]; transports: string[]; common_ports: number[] }
+/** Present when the toolkit runs as the public demo website, with what it allows */
+export interface DemoInfo {
+  http_methods: string[]; scan_targets: Record<string, string>; max_scan_ports: number;
+  smtp: { server: string; port: number }; dns_test: string;
+}
+
+export interface Info {
+  version: string; http2: boolean; query_types: string[]; transports: string[]; common_ports: number[];
+  demo: DemoInfo | null;
+}
 
 export const EXPLAIN = "Explain the attached capture: what happened step by step, anything unusual, and what to check next.";
 
@@ -95,7 +105,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
       credentials: "same-origin",
     });
   } catch {
-    throw new ApiError("Lost contact with the toolkit. Is it still running in the terminal?");
+    throw new ApiError("Lost contact with the toolkit. Check your connection, or that it's still running.");
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(typeof data.detail === "string" ? data.detail : `Request failed (${res.status})`);

@@ -3,7 +3,7 @@ import { Download, Play, Radar, Square } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, persist, remember, type ScanRow } from "../lib/api";
 import { useStore } from "../lib/store";
-import { Button, Card, cx, Empty, Input, Segmented, Toggle, ViewHeader } from "../components/ui";
+import { Button, Card, cx, Empty, Input, Segmented, Select, Toggle, ViewHeader } from "../components/ui";
 
 function download(name: string, text: string, type: string) {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -13,7 +13,8 @@ function download(name: string, text: string, type: string) {
 }
 
 export function ScanView() {
-  const { toast, subscribe } = useStore();
+  const { toast, subscribe, demo } = useStore();
+  const targets = demo ? Object.keys(demo.scan_targets) : null;
   const [form, setForm] = useState(() => remember("scan", { host: "127.0.0.1", mode: "common", ports: "1-1024", timeout: 0.5, banners: true, closed: false }));
   const [job, setJob] = useState<{ id: string; total: number } | null>(null);
   const [rows, setRows] = useState<ScanRow[]>([]);
@@ -37,7 +38,8 @@ export function ScanView() {
     setRows([]);
     setDone(null);
     try {
-      const r = await api.scan({ host: form.host.trim(), ports: form.mode === "common" ? "common" : form.ports,
+      const host = targets && !targets.includes(form.host.trim()) ? targets[0] : form.host.trim();
+      const r = await api.scan({ host, ports: form.mode === "common" ? "common" : form.ports,
         timeout: Number(form.timeout), banners: form.banners });
       jobRef.current = r.job;
       setJob({ id: r.job, total: r.total });
@@ -61,7 +63,14 @@ export function ScanView() {
       <ViewHeader title="Scanner" subtitle="Find open TCP ports and identify what's listening. Only scan machines you own or have permission to test." />
       <Card className="p-4">
         <form onSubmit={start} className="flex flex-wrap items-center gap-2">
-          <Input value={form.host} onChange={(e) => update({ host: e.target.value })} className="w-56 font-mono" aria-label="Target host" spellCheck={false} />
+          {targets ? (
+            <Select value={targets.includes(form.host) ? form.host : targets[0]} onChange={(e) => update({ host: e.target.value })}
+              className="w-56 font-mono" aria-label="Target host" title={demo!.scan_targets[targets[0]]}>
+              {targets.map((t) => <option key={t}>{t}</option>)}
+            </Select>
+          ) : (
+            <Input value={form.host} onChange={(e) => update({ host: e.target.value })} className="w-56 font-mono" aria-label="Target host" spellCheck={false} />
+          )}
           <Segmented layoutId="scan-mode" value={form.mode} onChange={(v) => update({ mode: v })}
             options={[{ value: "common", label: "Common ports" }, { value: "custom", label: "Custom" }]} />
           {form.mode === "custom" && (
@@ -90,7 +99,9 @@ export function ScanView() {
 
       {visible.length === 0 && !job ? (
         <Empty icon={<Radar className="size-8" />} title={done ? "Nothing open" : "No scan yet"}>
-          {done ? "No listening services were found on those ports." : "Scan 127.0.0.1 to see what's running on this Mac."}
+          {done ? "No listening services were found on those ports."
+            : targets ? `The demo scans ${targets.join(", ")}, a host whose owners invite scans. Run the app yourself to scan your own machines.`
+            : "Scan 127.0.0.1 to see what's running on this Mac."}
         </Empty>
       ) : (
         <Card className="mt-5 overflow-hidden">
